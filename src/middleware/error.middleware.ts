@@ -1,9 +1,9 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, ErrorRequestHandler } from 'express';
 import { AppError } from '../utils/errors';
 import logger from '../utils/logger';
 import config from '../config';
 
-export const errorHandler = (
+export const errorHandler: ErrorRequestHandler = (
   err: Error,
   _req: Request,
   res: Response,
@@ -11,10 +11,11 @@ export const errorHandler = (
 ) => {
   if (err instanceof AppError) {
     if (err.isOperational) {
-      return res.status(err.statusCode).json({
+      res.status(err.statusCode).json({
         status: 'error',
         message: err.message,
       });
+      return;
     }
   }
 
@@ -29,7 +30,7 @@ export const errorHandler = (
     ? 'Something went wrong' 
     : err.message;
 
-  return res.status(500).json({
+  res.status(500).json({
     status: 'error',
     message,
     ...(config.env !== 'production' && { stack: err.stack }),

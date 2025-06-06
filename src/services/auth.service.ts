@@ -16,7 +16,7 @@ export interface LoginDTO {
 }
 
 export interface AuthResponse {
-  user: Omit<User, 'password' | 'refreshToken'>;
+  user: Partial<User>;
   accessToken: string;
   refreshToken: string;
 }
@@ -39,9 +39,9 @@ export class AuthService {
     user.refreshToken = refreshToken;
     await this.userRepository.save(user);
 
-    const { password, ...userWithoutPassword } = user;
+    const userResponse = user.toJSON();
     return {
-      user: userWithoutPassword,
+      user: userResponse,
       accessToken,
       refreshToken,
     };
@@ -65,9 +65,9 @@ export class AuthService {
     user.lastLoginAt = new Date();
     await this.userRepository.save(user);
 
-    const { password, ...userWithoutPassword } = user;
+    const userResponse = user.toJSON();
     return {
-      user: userWithoutPassword,
+      user: userResponse,
       accessToken,
       refreshToken,
     };
@@ -93,6 +93,6 @@ export class AuthService {
   }
 
   async logout(userId: string): Promise<void> {
-    await this.userRepository.update(userId, { refreshToken: null });
+    await this.userRepository.update(userId, { refreshToken: undefined });
   }
 } 

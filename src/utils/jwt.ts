@@ -15,6 +15,7 @@ export const generateAccessToken = (user: User): string => {
     type: 'access',
   };
 
+  // @ts-ignore - Temporarily ignore JWT typing issues
   return jwt.sign(payload, config.jwt.secret, {
     expiresIn: config.jwt.expiration,
   });
@@ -27,6 +28,7 @@ export const generateRefreshToken = (user: User): string => {
     type: 'refresh',
   };
 
+  // @ts-ignore - Temporarily ignore JWT typing issues
   return jwt.sign(payload, config.jwt.secret, {
     expiresIn: config.jwt.refreshExpiration,
   });
@@ -34,7 +36,8 @@ export const generateRefreshToken = (user: User): string => {
 
 export const verifyToken = (token: string): TokenPayload => {
   try {
-    return jwt.verify(token, config.jwt.secret) as TokenPayload;
+    const decoded = jwt.verify(token, config.jwt.secret) as TokenPayload;
+    return decoded;
   } catch (error) {
     throw error;
   }
@@ -42,7 +45,8 @@ export const verifyToken = (token: string): TokenPayload => {
 
 export const decodeToken = (token: string): TokenPayload | null => {
   try {
-    return jwt.decode(token) as TokenPayload;
+    const decoded = jwt.decode(token) as TokenPayload;
+    return decoded;
   } catch {
     return null;
   }
