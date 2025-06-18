@@ -28,8 +28,11 @@ describe('Cache Middleware', () => {
       method: 'GET',
       originalUrl: '/test',
     };
+    
+    // Create proper mock for res.json
+    const mockJsonFunction = jest.fn().mockReturnThis();
     mockRes = {
-      json: jest.fn().mockReturnThis(),
+      json: mockJsonFunction,
     };
     mockNext = jest.fn();
 
@@ -81,12 +84,15 @@ describe('Cache Middleware', () => {
     it('should proceed to next middleware when cache miss occurs', async () => {
       mockGetCache.mockResolvedValue(null);
 
+      // Store reference to original mock
+      const originalJsonMock = mockRes.json as jest.Mock;
+
       const middleware = cache();
       await middleware(mockReq as Request, mockRes as Response, mockNext);
 
       expect(mockGetCache).toHaveBeenCalledWith('GET:/test');
       expect(mockNext).toHaveBeenCalled();
-      expect(mockRes.json).not.toHaveBeenCalled();
+      expect(originalJsonMock).not.toHaveBeenCalled();
     });
 
     it('should override res.json to cache response on cache miss', async () => {
@@ -270,8 +276,15 @@ describe('Cache Middleware', () => {
       (mockRes.json as any)(arrayData);
       expect(mockSetCache).toHaveBeenCalledWith('GET:/test', arrayData, undefined);
 
-      // Reset for next call
+      // Reset mock and create new middleware instance for next call
       mockSetCache.mockClear();
+      mockGetCache.mockResolvedValue(null);
+      
+      const originalJson2 = jest.fn().mockReturnThis();
+      mockRes.json = originalJson2;
+      
+      const middleware2 = cache();
+      await middleware2(mockReq as Request, mockRes as Response, mockNext);
       
       // Test with string
       const stringData = 'test string';

@@ -16,7 +16,9 @@ declare global {
 export const extractToken = (req: Request): string | undefined => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
-    return authHeader.split(' ')[1];
+    // Handle extra spaces by filtering out empty strings
+    const parts = authHeader.split(' ').filter(part => part.length > 0);
+    return parts.length > 1 ? parts[1] : undefined;
   }
   return undefined;
 };

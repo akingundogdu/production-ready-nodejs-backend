@@ -2,8 +2,11 @@ import { DataSource } from 'typeorm';
 import path from 'path';
 
 // Mock dependencies
+const mockDataSourceInstance = { isInitialized: false };
+const mockDataSource = jest.fn(() => mockDataSourceInstance);
+
 jest.mock('typeorm', () => ({
-  DataSource: jest.fn(),
+  DataSource: mockDataSource,
 }));
 
 jest.mock('./index', () => ({
@@ -18,24 +21,36 @@ jest.mock('./index', () => ({
   env: 'development',
 }));
 
+const mockPathJoin = jest.fn((...args) => args.join('/'));
 jest.mock('path', () => ({
-  join: jest.fn((...args) => args.join('/')),
+  join: mockPathJoin,
 }));
 
-const mockDataSource = DataSource as jest.MockedClass<typeof DataSource>;
-const mockPath = path as jest.Mocked<typeof path>;
+// Import the module to trigger initialization
+import { AppDataSource } from './database';
 
 describe('Database Configuration', () => {
+  // Store initial mock calls made during module initialization
+  const initialDataSourceCalls = [...mockDataSource.mock.calls];
+  const initialPathJoinCalls = [...mockPathJoin.mock.calls];
+
   beforeEach(() => {
-    jest.clearAllMocks();
-    jest.resetModules();
+    // Reset mocks but preserve initial calls for initialization tests
+    mockDataSource.mockClear();
+    mockPathJoin.mockClear();
+    
+    // Restore initial calls
+    initialDataSourceCalls.forEach(call => {
+      mockDataSource.mock.calls.push(call);
+    });
+    
+    initialPathJoinCalls.forEach(call => {
+      mockPathJoin.mock.calls.push(call);
+    });
   });
 
   describe('AppDataSource Creation', () => {
     it('should create DataSource with correct configuration', () => {
-      // Import the module to trigger DataSource creation
-      const { AppDataSource } = require('./database');
-
       expect(mockDataSource).toHaveBeenCalledWith({
         type: 'postgres',
         host: 'test-host',
@@ -58,28 +73,23 @@ describe('Database Configuration', () => {
     });
 
     it('should use correct database type', () => {
-      require('./database');
-
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
-      expect(callArgs.type).toBe('postgres');
+      const callArgs = (mockDataSource.mock.calls as any)[0]?.[0];
+      expect(callArgs?.type).toBe('postgres');
     });
 
     it('should disable synchronize for safety', () => {
-      require('./database');
-
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
-      expect(callArgs.synchronize).toBe(false);
+      const callArgs = (mockDataSource.mock.calls as any)[0]?.[0];
+      expect(callArgs?.synchronize).toBe(false);
     });
 
     it('should enable logging in development environment', () => {
-      require('./database');
-
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
-      expect(callArgs.logging).toBe(true);
+      const callArgs = (mockDataSource.mock.calls as any)[0]?.[0];
+      expect(callArgs?.logging).toBe(true);
     });
 
     it('should disable logging in production environment', () => {
-      // Mock production environment
+      // Mock production environment and require fresh module
+      jest.resetModules();
       jest.doMock('./index', () => ({
         db: {
           host: 'prod-host',
@@ -92,66 +102,55 @@ describe('Database Configuration', () => {
         env: 'production',
       }));
 
-      // Clear modules and require again
-      jest.resetModules();
       require('./database');
 
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
-      expect(callArgs.logging).toBe(false);
+      // Get the most recent call (after the reset)
+      const callArgs = (mockDataSource.mock.calls as any)[(mockDataSource.mock.calls as any).length - 1]?.[0];
+      expect(callArgs?.logging).toBe(false);
     });
 
     it('should set correct connection timeouts and pool settings', () => {
-      require('./database');
-
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
-      expect(callArgs.maxQueryExecutionTime).toBe(1000);
-      expect(callArgs.connectTimeoutMS).toBe(10000);
-      expect(callArgs.extra.max).toBe(25);
+      const callArgs = (mockDataSource.mock.calls as any)[0]?.[0];
+      expect(callArgs?.maxQueryExecutionTime).toBe(1000);
+      expect(callArgs?.connectTimeoutMS).toBe(10000);
+      expect(callArgs?.extra?.max).toBe(25);
     });
   });
 
   describe('Path Configuration', () => {
     it('should configure entities path correctly', () => {
-      require('./database');
-
-      expect(mockPath.join).toHaveBeenCalledWith(
+      expect(mockPathJoin).toHaveBeenCalledWith(
         expect.any(String),
         '../models/**/*.entity{.ts,.js}'
       );
 
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
-      expect(callArgs.entities).toEqual([expect.stringContaining('models')]);
+      const callArgs = (mockDataSource.mock.calls as any)[0]?.[0];
+      expect(callArgs?.entities).toEqual([expect.stringContaining('models')]);
     });
 
     it('should configure migrations path correctly', () => {
-      require('./database');
-
-      expect(mockPath.join).toHaveBeenCalledWith(
+      expect(mockPathJoin).toHaveBeenCalledWith(
         expect.any(String),
         '../migrations/**/*{.ts,.js}'
       );
 
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
-      expect(callArgs.migrations).toEqual([expect.stringContaining('migrations')]);
+      const callArgs = (mockDataSource.mock.calls as any)[0]?.[0];
+      expect(callArgs?.migrations).toEqual([expect.stringContaining('migrations')]);
     });
 
     it('should configure subscribers path correctly', () => {
-      require('./database');
-
-      expect(mockPath.join).toHaveBeenCalledWith(
+      expect(mockPathJoin).toHaveBeenCalledWith(
         expect.any(String),
         '../subscribers/**/*{.ts,.js}'
       );
 
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
-      expect(callArgs.subscribers).toEqual([expect.stringContaining('subscribers')]);
+      const callArgs = (mockDataSource.mock.calls as any)[0]?.[0];
+      expect(callArgs?.subscribers).toEqual([expect.stringContaining('subscribers')]);
     });
 
     it('should use __dirname for path resolution', () => {
-      require('./database');
-
       // Verify that path.join was called with __dirname as first argument
-      const pathJoinCalls = mockPath.join.mock.calls;
+      const pathJoinCalls = mockPathJoin.mock.calls;
       expect(pathJoinCalls.length).toBeGreaterThan(0);
       
       // Each call should have __dirname (or similar) as first argument
@@ -164,20 +163,19 @@ describe('Database Configuration', () => {
 
   describe('Database Configuration Values', () => {
     it('should use all database configuration from config', () => {
-      require('./database');
-
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
+      const callArgs = (mockDataSource.mock.calls as any)[0]?.[0];
       
-      expect(callArgs.host).toBe('test-host');
-      expect(callArgs.port).toBe(5432);
-      expect(callArgs.username).toBe('test-user');
-      expect(callArgs.password).toBe('test-password');
-      expect(callArgs.database).toBe('test-db');
-      expect(callArgs.schema).toBe('test-schema');
+      expect(callArgs?.host).toBe('test-host');
+      expect(callArgs?.port).toBe(5432);
+      expect(callArgs?.username).toBe('test-user');
+      expect(callArgs?.password).toBe('test-password');
+      expect(callArgs?.database).toBe('test-db');
+      expect(callArgs?.schema).toBe('test-schema');
     });
 
     it('should handle different database configurations', () => {
-      // Mock different config
+      // Mock different config and require fresh module
+      jest.resetModules();
       jest.doMock('./index', () => ({
         db: {
           host: 'another-host',
@@ -190,40 +188,33 @@ describe('Database Configuration', () => {
         env: 'test',
       }));
 
-      jest.resetModules();
       require('./database');
 
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
+      // Get the most recent call (after the reset)
+      const callArgs = (mockDataSource.mock.calls as any)[(mockDataSource.mock.calls as any).length - 1]?.[0];
       
-      expect(callArgs.host).toBe('another-host');
-      expect(callArgs.port).toBe(3306);
-      expect(callArgs.username).toBe('another-user');
-      expect(callArgs.password).toBe('another-password');
-      expect(callArgs.database).toBe('another-db');
-      expect(callArgs.schema).toBe('another-schema');
+      expect(callArgs?.host).toBe('another-host');
+      expect(callArgs?.port).toBe(3306);
+      expect(callArgs?.username).toBe('another-user');
+      expect(callArgs?.password).toBe('another-password');
+      expect(callArgs?.database).toBe('another-db');
+      expect(callArgs?.schema).toBe('another-schema');
     });
   });
 
   describe('AppDataSource Export', () => {
     it('should export AppDataSource as named export', () => {
-      const databaseModule = require('./database');
-
-      expect(databaseModule).toHaveProperty('AppDataSource');
-      expect(databaseModule.AppDataSource).toBeDefined();
+      expect(AppDataSource).toBeDefined();
     });
 
     it('should return the created DataSource instance', () => {
-      const mockDataSourceInstance = { isInitialized: false };
-      (mockDataSource as any).mockReturnValue(mockDataSourceInstance);
-
-      const { AppDataSource } = require('./database');
-
       expect(AppDataSource).toBe(mockDataSourceInstance);
     });
   });
 
   describe('Environment-specific Configuration', () => {
     it('should handle test environment', () => {
+      jest.resetModules();
       jest.doMock('./index', () => ({
         db: {
           host: 'test-host',
@@ -236,14 +227,15 @@ describe('Database Configuration', () => {
         env: 'test',
       }));
 
-      jest.resetModules();
       require('./database');
 
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
-      expect(callArgs.logging).toBe(false); // test environment should not log
+      // Get the most recent call (after the reset)
+      const callArgs = (mockDataSource.mock.calls as any)[(mockDataSource.mock.calls as any).length - 1]?.[0];
+      expect(callArgs?.logging).toBe(false); // test environment should not log
     });
 
     it('should handle staging environment', () => {
+      jest.resetModules();
       jest.doMock('./index', () => ({
         db: {
           host: 'staging-host',
@@ -256,11 +248,11 @@ describe('Database Configuration', () => {
         env: 'staging',
       }));
 
-      jest.resetModules();
       require('./database');
 
-      const callArgs = (mockDataSource as any).mock.calls[0][0];
-      expect(callArgs.logging).toBe(false); // staging environment should not log
+      // Get the most recent call (after the reset)
+      const callArgs = (mockDataSource.mock.calls as any)[(mockDataSource.mock.calls as any).length - 1]?.[0];
+      expect(callArgs?.logging).toBe(false); // staging environment should not log
     });
   });
 }); 

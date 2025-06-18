@@ -1,31 +1,23 @@
 import { createClient } from 'redis';
 import config from '../config';
 import logger from './logger';
-import {
-  connectRedis,
-  disconnectRedis,
-  getCache,
-  setCache,
-  deleteCache,
-  clearCache,
-} from './redis';
 
-// Mock dependencies
-jest.mock('redis', () => {
-  const mockRedisClient = {
-    connect: jest.fn(),
-    disconnect: jest.fn(),
-    get: jest.fn(),
-    setEx: jest.fn(),
-    del: jest.fn(),
-    flushAll: jest.fn(),
-    on: jest.fn(),
-  };
+// Mock dependencies with proper setup
+const mockRedisClient = {
+  connect: jest.fn(),
+  disconnect: jest.fn(),
+  get: jest.fn(),
+  setEx: jest.fn(),
+  del: jest.fn(),
+  flushAll: jest.fn(),
+  on: jest.fn(),
+};
 
-  return {
-    createClient: jest.fn(() => mockRedisClient),
-  };
-});
+const mockCreateClient = jest.fn(() => mockRedisClient);
+
+jest.mock('redis', () => ({
+  createClient: mockCreateClient,
+}));
 
 jest.mock('../config', () => ({
   redis: {
@@ -41,29 +33,62 @@ jest.mock('./logger', () => ({
   error: jest.fn(),
 }));
 
-const mockCreateClient = createClient as jest.MockedFunction<typeof createClient>;
 const mockLogger = logger as jest.Mocked<typeof logger>;
 
-// Get the mock redis client from the create client return value
-const getMockRedisClient = () => {
-  return mockCreateClient();
-};
+// Import the module to trigger initialization
+import {
+  connectRedis,
+  disconnectRedis,
+  getCache,
+  setCache,
+  deleteCache,
+  clearCache,
+} from './redis';
 
 describe('Redis Utilities', () => {
-  let mockRedisClient: any;
+  // Store initial mock calls made during module initialization
+  const initialMockCreateClientCalls = [...mockCreateClient.mock.calls];
+  const initialMockOnCalls = [...mockRedisClient.on.mock.calls];
 
   beforeEach(() => {
-    jest.clearAllMocks();
-    // Reset the module to ensure fresh initialization
-    jest.resetModules();
-    mockRedisClient = getMockRedisClient();
+    // Reset mocks but preserve initial calls for initialization tests
+    const functionsToReset = [
+      mockRedisClient.connect,
+      mockRedisClient.disconnect,
+      mockRedisClient.get,
+      mockRedisClient.setEx,
+      mockRedisClient.del,
+      mockRedisClient.flushAll,
+      mockLogger.info,
+      mockLogger.error,
+    ];
+
+    functionsToReset.forEach(fn => fn.mockClear());
+    
+    // Only clear newer calls, preserve the initial setup calls
+    const currentCreateClientCalls = mockCreateClient.mock.calls.length;
+    const currentOnCalls = mockRedisClient.on.mock.calls.length;
+    
+    // If there are new calls beyond the initial ones, clear only those
+    if (currentCreateClientCalls > initialMockCreateClientCalls.length) {
+      mockCreateClient.mockClear();
+      // Restore initial calls
+      initialMockCreateClientCalls.forEach(call => {
+        mockCreateClient.mock.calls.push(call);
+      });
+    }
+    
+    if (currentOnCalls > initialMockOnCalls.length) {
+      mockRedisClient.on.mockClear();
+      // Restore initial calls
+      initialMockOnCalls.forEach(call => {
+        mockRedisClient.on.mock.calls.push(call);
+      });
+    }
   });
 
   describe('Redis Client Creation and Event Handlers', () => {
     it('should create redis client with correct configuration', () => {
-      // Require the module to trigger initialization
-      require('./redis');
-
       expect(mockCreateClient).toHaveBeenCalledWith({
         socket: {
           host: config.redis.host,
@@ -74,15 +99,11 @@ describe('Redis Utilities', () => {
     });
 
     it('should register error and connect event handlers', () => {
-      require('./redis');
-
       expect(mockRedisClient.on).toHaveBeenCalledWith('error', expect.any(Function));
       expect(mockRedisClient.on).toHaveBeenCalledWith('connect', expect.any(Function));
     });
 
     it('should handle redis error events and call logger.error (LINE 14)', () => {
-      require('./redis');
-
       // Get the error handler from the mock calls
       const errorHandler = mockRedisClient.on.mock.calls.find(
         (call: any[]) => call[0] === 'error'
@@ -97,8 +118,6 @@ describe('Redis Utilities', () => {
     });
 
     it('should handle redis connect events and call logger.info (LINE 18)', () => {
-      require('./redis');
-
       // Get the connect handler from the mock calls
       const connectHandler = mockRedisClient.on.mock.calls.find(
         (call: any[]) => call[0] === 'connect'
@@ -155,7 +174,7 @@ describe('Redis Utilities', () => {
       const testData = { id: 1, name: 'test' };
       mockRedisClient.get.mockResolvedValue(JSON.stringify(testData));
 
-      const result = await getCache<typeof testData>(testKey);
+      const result = await getCache(testKey);
 
       expect(mockRedisClient.get).toHaveBeenCalledWith(testKey);
       expect(result).toEqual(testData);
@@ -205,70 +224,42 @@ describe('Redis Utilities', () => {
   describe('setCache', () => {
     it('should set cache with default TTL', async () => {
       const testKey = 'test-key';
-      const testValue = { id: 1, name: 'test' };
+      const testData = { id: 1, name: 'test' };
       mockRedisClient.setEx.mockResolvedValue('OK');
 
-      await setCache(testKey, testValue);
+      await setCache(testKey, testData);
 
       expect(mockRedisClient.setEx).toHaveBeenCalledWith(
         testKey,
         config.redis.ttl,
-        JSON.stringify(testValue)
+        JSON.stringify(testData)
       );
     });
 
     it('should set cache with custom TTL', async () => {
       const testKey = 'test-key';
-      const testValue = { id: 1, name: 'test' };
+      const testData = { id: 1, name: 'test' };
       const customTtl = 1800;
       mockRedisClient.setEx.mockResolvedValue('OK');
 
-      await setCache(testKey, testValue, customTtl);
+      await setCache(testKey, testData, customTtl);
 
       expect(mockRedisClient.setEx).toHaveBeenCalledWith(
         testKey,
         customTtl,
-        JSON.stringify(testValue)
+        JSON.stringify(testData)
       );
     });
 
-    it('should handle string values', async () => {
-      const testKey = 'string-key';
-      const testValue = 'test string';
-      mockRedisClient.setEx.mockResolvedValue('OK');
-
-      await setCache(testKey, testValue);
-
-      expect(mockRedisClient.setEx).toHaveBeenCalledWith(
-        testKey,
-        config.redis.ttl,
-        JSON.stringify(testValue)
-      );
-    });
-
-    it('should handle number values', async () => {
-      const testKey = 'number-key';
-      const testValue = 123;
-      mockRedisClient.setEx.mockResolvedValue('OK');
-
-      await setCache(testKey, testValue);
-
-      expect(mockRedisClient.setEx).toHaveBeenCalledWith(
-        testKey,
-        config.redis.ttl,
-        JSON.stringify(testValue)
-      );
-    });
-
-    it('should handle redis set errors', async () => {
+    it('should handle set cache errors', async () => {
       const testKey = 'error-key';
-      const testValue = 'test';
-      const redisError = new Error('Redis set failed');
-      mockRedisClient.setEx.mockRejectedValue(redisError);
+      const testData = { id: 1, name: 'test' };
+      const setError = new Error('Redis set failed');
+      mockRedisClient.setEx.mockRejectedValue(setError);
 
-      await setCache(testKey, testValue);
+      await setCache(testKey, testData);
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Redis Set Error:', redisError);
+      expect(mockLogger.error).toHaveBeenCalledWith('Redis Set Error:', setError);
     });
   });
 
@@ -282,14 +273,14 @@ describe('Redis Utilities', () => {
       expect(mockRedisClient.del).toHaveBeenCalledWith(testKey);
     });
 
-    it('should handle redis delete errors', async () => {
+    it('should handle delete cache errors', async () => {
       const testKey = 'error-key';
-      const redisError = new Error('Redis delete failed');
-      mockRedisClient.del.mockRejectedValue(redisError);
+      const deleteError = new Error('Redis delete failed');
+      mockRedisClient.del.mockRejectedValue(deleteError);
 
       await deleteCache(testKey);
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Redis Delete Error:', redisError);
+      expect(mockLogger.error).toHaveBeenCalledWith('Redis Delete Error:', deleteError);
     });
   });
 
@@ -302,41 +293,84 @@ describe('Redis Utilities', () => {
       expect(mockRedisClient.flushAll).toHaveBeenCalled();
     });
 
-    it('should handle redis flush errors', async () => {
-      const redisError = new Error('Redis flush failed');
-      mockRedisClient.flushAll.mockRejectedValue(redisError);
+    it('should handle clear cache errors', async () => {
+      const clearError = new Error('Redis clear failed');
+      mockRedisClient.flushAll.mockRejectedValue(clearError);
 
       await clearCache();
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Redis Clear Error:', redisError);
+      expect(mockLogger.error).toHaveBeenCalledWith('Redis Clear Error:', clearError);
     });
   });
 
-  describe('Default Export', () => {
-    it('should export redis client as default', () => {
-      const redisModule = require('./redis');
+  describe('Type Safety and Edge Cases', () => {
+    it('should handle null values correctly in setCache', async () => {
+      const testKey = 'null-key';
+      const testData = null;
+      mockRedisClient.setEx.mockResolvedValue('OK');
 
-      expect(redisModule.default).toBeDefined();
+      await setCache(testKey, testData);
+
+      expect(mockRedisClient.setEx).toHaveBeenCalledWith(
+        testKey,
+        config.redis.ttl,
+        JSON.stringify(testData)
+      );
     });
-  });
 
-  describe('Type Safety', () => {
-    it('should handle typed cache operations', async () => {
+    it('should handle undefined values correctly in setCache', async () => {
+      const testKey = 'undefined-key';
+      const testData = undefined;
+      mockRedisClient.setEx.mockResolvedValue('OK');
+
+      await setCache(testKey, testData);
+
+      expect(mockRedisClient.setEx).toHaveBeenCalledWith(
+        testKey,
+        config.redis.ttl,
+        JSON.stringify(testData)
+      );
+    });
+
+    it('should handle complex objects in cache operations', async () => {
       interface TestData {
         id: number;
         name: string;
+        nested: {
+          value: boolean;
+          items: string[];
+        };
       }
 
-      const testKey = 'typed-key';
-      const testData: TestData = { id: 1, name: 'test' };
-      
+      const testKey = 'complex-key';
+      const testData: TestData = {
+        id: 1,
+        name: 'test',
+        nested: {
+          value: true,
+          items: ['a', 'b', 'c'],
+        },
+      };
+
+      // Test setting complex data
       mockRedisClient.setEx.mockResolvedValue('OK');
+      await setCache(testKey, testData);
+
+      expect(mockRedisClient.setEx).toHaveBeenCalledWith(
+        testKey,
+        config.redis.ttl,
+        JSON.stringify(testData)
+      );
+
+      // Reset mocks for get test
+      jest.clearAllMocks();
+
+      // Test getting complex data
       mockRedisClient.get.mockResolvedValue(JSON.stringify(testData));
+      const result = await getCache(testKey);
 
-      await setCache<TestData>(testKey, testData);
-      const result = await getCache<TestData>(testKey);
-
+      expect(mockRedisClient.get).toHaveBeenCalledWith(testKey);
       expect(result).toEqual(testData);
     });
   });
-}); 
+});

@@ -14,29 +14,29 @@ describe('Config', () => {
     // Save original environment
     originalEnv = process.env;
     
-    // Clear all environment variables that might affect config using bracket notation
-    (process.env as any)['NODE_ENV'] = undefined;
-    (process.env as any)['PORT'] = undefined;
-    (process.env as any)['API_PREFIX'] = undefined;
-    (process.env as any)['DB_HOST'] = undefined;
-    (process.env as any)['DB_PORT'] = undefined;
-    (process.env as any)['DB_USERNAME'] = undefined;
-    (process.env as any)['DB_PASSWORD'] = undefined;
-    (process.env as any)['DB_DATABASE'] = undefined;
-    (process.env as any)['DB_SCHEMA'] = undefined;
-    (process.env as any)['JWT_SECRET'] = undefined;
-    (process.env as any)['JWT_EXPIRATION'] = undefined;
-    (process.env as any)['JWT_REFRESH_EXPIRATION'] = undefined;
-    (process.env as any)['LOG_LEVEL'] = undefined;
-    (process.env as any)['LOG_FORMAT'] = undefined;
-    (process.env as any)['RATE_LIMIT_WINDOW'] = undefined;
-    (process.env as any)['RATE_LIMIT_MAX_REQUESTS'] = undefined;
-    (process.env as any)['CORS_ORIGIN'] = undefined;
-    (process.env as any)['SWAGGER_ENABLED'] = undefined;
-    (process.env as any)['REDIS_HOST'] = undefined;
-    (process.env as any)['REDIS_PORT'] = undefined;
-    (process.env as any)['REDIS_PASSWORD'] = undefined;
-    (process.env as any)['REDIS_TTL'] = undefined;
+    // Clear all environment variables that might affect config by deleting them
+    delete (process.env as any).NODE_ENV;
+    delete (process.env as any).PORT;
+    delete (process.env as any).API_PREFIX;
+    delete (process.env as any).DB_HOST;
+    delete (process.env as any).DB_PORT;
+    delete (process.env as any).DB_USERNAME;
+    delete (process.env as any).DB_PASSWORD;
+    delete (process.env as any).DB_DATABASE;
+    delete (process.env as any).DB_SCHEMA;
+    delete (process.env as any).JWT_SECRET;
+    delete (process.env as any).JWT_EXPIRATION;
+    delete (process.env as any).JWT_REFRESH_EXPIRATION;
+    delete (process.env as any).LOG_LEVEL;
+    delete (process.env as any).LOG_FORMAT;
+    delete (process.env as any).RATE_LIMIT_WINDOW;
+    delete (process.env as any).RATE_LIMIT_MAX_REQUESTS;
+    delete (process.env as any).CORS_ORIGIN;
+    delete (process.env as any).SWAGGER_ENABLED;
+    delete (process.env as any).REDIS_HOST;
+    delete (process.env as any).REDIS_PORT;
+    delete (process.env as any).REDIS_PASSWORD;
+    delete (process.env as any).REDIS_TTL;
 
     jest.clearAllMocks();
     
@@ -245,12 +245,12 @@ describe('Config', () => {
     });
 
     it('should handle undefined Redis password', () => {
-      // Ensure REDIS_PASSWORD is not set
-      (process.env as any)['REDIS_PASSWORD'] = undefined;
+      // Ensure REDIS_PASSWORD is not set by deleting it
+      delete (process.env as any).REDIS_PASSWORD;
       
       const config = require('./index').default;
 
-      // Since we set it to undefined, it should remain undefined, not become "undefined" string
+      // Since REDIS_PASSWORD is not set, it should remain undefined, not become "undefined" string
       expect(config.redis.password).toBeUndefined();
     });
   });
